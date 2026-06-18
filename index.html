@@ -1,0 +1,812 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OpsTracker</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root {
+    --glass-bg: rgba(255,255,255,0.18);
+    --glass-border: rgba(255,255,255,0.38);
+    --glass-blur: blur(20px);
+    --bg-grad: linear-gradient(135deg, #c8d8ff 0%, #e8d8ff 40%, #d0ecff 100%);
+    --card-bg: rgba(255,255,255,0.22);
+    --card-border: rgba(255,255,255,0.48);
+    --text-primary: #1a1a2e;
+    --text-secondary: #4a4a6a;
+    --text-muted: #7a7a9a;
+    --accent: #6c63ff;
+    --accent2: #a78bfa;
+    --success: #10b981;
+    --warning: #f59e0b;
+    --danger: #ef4444;
+    --completed-bg: rgba(16,185,129,0.08);
+    --completed-border: rgba(16,185,129,0.22);
+    --pill-bg: rgba(108,99,255,0.12);
+    --input-bg: rgba(255,255,255,0.45);
+    --input-border: rgba(255,255,255,0.6);
+    --toolbar-bg: rgba(255,255,255,0.3);
+    --modal-overlay: rgba(20,10,60,0.38);
+    --shadow: 0 8px 32px rgba(80,60,200,0.12);
+    --badge-high-bg: rgba(239,68,68,0.13);
+    --badge-high-text: #c0170a;
+    --badge-medium-bg: rgba(180,110,0,0.13);
+    --badge-medium-text: #92620a;
+    --badge-low-bg: rgba(5,130,80,0.13);
+    --badge-low-text: #0a7a50;
+    --priority-high-border: #dc2626;
+    --priority-medium-border: #d97706;
+    --priority-low-border: #059669;
+  }
+  body.dark {
+    --glass-bg: rgba(20,15,50,0.5);
+    --glass-border: rgba(255,255,255,0.1);
+    --bg-grad: linear-gradient(135deg, #0f0c29 0%, #1c1040 45%, #0d1b2a 100%);
+    --card-bg: rgba(255,255,255,0.05);
+    --card-border: rgba(255,255,255,0.1);
+    --text-primary: #e8e4ff;
+    --text-secondary: #b0aad4;
+    --text-muted: #6860a0;
+    --accent: #a78bfa;
+    --accent2: #c4b5fd;
+    --success: #34d399;
+    --warning: #fbbf24;
+    --danger: #f87171;
+    --completed-bg: rgba(52,211,153,0.07);
+    --completed-border: rgba(52,211,153,0.18);
+    --pill-bg: rgba(167,139,250,0.14);
+    --input-bg: rgba(255,255,255,0.07);
+    --input-border: rgba(255,255,255,0.13);
+    --toolbar-bg: rgba(255,255,255,0.05);
+    --modal-overlay: rgba(0,0,0,0.65);
+    --shadow: 0 8px 32px rgba(0,0,0,0.4);
+    --badge-high-bg: rgba(248,113,113,0.18);
+    --badge-high-text: #fca5a5;
+    --badge-medium-bg: rgba(251,191,36,0.16);
+    --badge-medium-text: #fcd34d;
+    --badge-low-bg: rgba(52,211,153,0.16);
+    --badge-low-text: #6ee7b7;
+    --priority-high-border: #f87171;
+    --priority-medium-border: #fbbf24;
+    --priority-low-border: #34d399;
+  }
+  *{box-sizing:border-box;margin:0;padding:0;}
+  html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
+  body{background:var(--bg-grad);background-attachment:fixed;color:var(--text-primary);transition:background 0.4s,color 0.3s;}
+
+  /* SETUP BANNER */
+  .setup-banner{
+    background:linear-gradient(90deg,rgba(108,99,255,0.18),rgba(167,139,250,0.12));
+    border:1px solid rgba(108,99,255,0.3);
+    border-radius:16px;margin:16px;padding:14px 18px;
+    display:flex;align-items:center;gap:12px;flex-wrap:wrap;
+  }
+  .setup-banner.hidden{display:none;}
+  .setup-banner p{font-size:13px;color:var(--text-secondary);flex:1;min-width:200px;}
+  .setup-banner strong{color:var(--accent);}
+
+  /* TOPBAR */
+  .topbar{
+    position:sticky;top:0;z-index:100;
+    background:var(--toolbar-bg);
+    backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+    border-bottom:1px solid var(--glass-border);
+    padding:10px 20px;
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  }
+  .topbar-brand{font-size:19px;font-weight:800;background:linear-gradient(90deg,#6c63ff,#a78bfa);-webkit-background-clip:text;-webkit-text-fill-color:transparent;flex:1;min-width:120px;}
+  .sync-badge{
+    font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600;
+    background:var(--pill-bg);color:var(--text-muted);
+    transition:background 0.3s,color 0.3s;
+  }
+  .sync-badge.syncing{background:rgba(245,158,11,0.18);color:var(--warning);}
+  .sync-badge.synced{background:rgba(16,185,129,0.15);color:var(--success);}
+  .sync-badge.error{background:rgba(239,68,68,0.15);color:var(--danger);}
+  .sync-badge.offline{background:rgba(120,120,160,0.15);color:var(--text-muted);}
+
+  .btn{
+    display:inline-flex;align-items:center;gap:5px;
+    padding:7px 15px;border-radius:22px;font-size:13px;font-weight:600;
+    cursor:pointer;border:1px solid var(--glass-border);
+    background:var(--glass-bg);backdrop-filter:var(--glass-blur);
+    color:var(--text-primary);transition:all 0.18s;white-space:nowrap;
+  }
+  .btn:hover{background:var(--card-bg);transform:translateY(-1px);box-shadow:var(--shadow);}
+  .btn:active{transform:translateY(0);}
+  .btn-save{background:linear-gradient(90deg,#6c63ff,#a78bfa);color:#fff;border:none;}
+  .btn-save:hover{opacity:0.88;transform:translateY(-1px);}
+  .btn-sm{padding:4px 11px;font-size:12px;border-radius:14px;}
+  .btn-accent{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .btn-accent:hover{opacity:0.88;}
+  .btn-danger{background:rgba(239,68,68,0.15);color:var(--danger);border-color:rgba(239,68,68,0.3);}
+
+  /* SEARCH BAR */
+  .searchbar{
+    background:var(--toolbar-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+    border-bottom:1px solid var(--glass-border);
+    padding:8px 20px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  }
+  .search-input{
+    flex:1;min-width:160px;padding:7px 14px;border-radius:18px;
+    border:1px solid var(--input-border);background:var(--input-bg);
+    backdrop-filter:blur(8px);color:var(--text-primary);font-size:13px;outline:none;
+    transition:border-color 0.2s;
+  }
+  .search-input:focus{border-color:var(--accent);}
+  .filter-sel{
+    padding:7px 12px;border-radius:16px;font-size:13px;
+    border:1px solid var(--input-border);background:var(--input-bg);
+    backdrop-filter:blur(8px);color:var(--text-primary);outline:none;cursor:pointer;
+  }
+  .filter-sel option{background:#f0eeff;color:#1a1a2e;}
+  body.dark .filter-sel option{background:#1c1040;color:#e8e4ff;}
+
+  /* MAIN */
+  .main{max-width:1140px;margin:0 auto;padding:22px 16px 80px;}
+  .section-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:18px;}
+
+  /* SECTION CARD */
+  .section-card{
+    background:var(--card-bg);border:1px solid var(--card-border);
+    border-radius:22px;backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+    box-shadow:var(--shadow);overflow:hidden;transition:border-color 0.2s,box-shadow 0.2s;
+  }
+  .section-card:hover{border-color:var(--glass-border);box-shadow:0 12px 40px rgba(108,99,255,0.14);}
+  .section-header{
+    padding:14px 16px 10px;display:flex;align-items:center;gap:8px;
+    border-bottom:1px solid var(--glass-border);
+  }
+  .section-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
+  .section-title{font-size:14px;font-weight:700;flex:1;}
+  .section-count{font-size:11px;color:var(--text-muted);background:var(--pill-bg);padding:2px 8px;border-radius:10px;}
+  .section-body{padding:10px 12px;}
+
+  /* ITEM CARD */
+  .item-card{
+    background:var(--glass-bg);border:1px solid var(--glass-border);
+    border-radius:14px;padding:10px 12px;margin-bottom:8px;transition:all 0.18s;
+  }
+  .item-card:hover{background:var(--card-bg);box-shadow:0 4px 16px rgba(108,99,255,0.08);}
+  .item-card.completed{background:var(--completed-bg);border-color:var(--completed-border);opacity:0.82;}
+  .item-card.p-high{border-left:3px solid var(--priority-high-border);}
+  .item-card.p-medium{border-left:3px solid var(--priority-medium-border);}
+  .item-card.p-low{border-left:3px solid var(--priority-low-border);}
+
+  .item-top{display:flex;align-items:flex-start;gap:8px;}
+  .item-cb{
+    width:18px;height:18px;border-radius:5px;border:2px solid var(--text-muted);
+    cursor:pointer;flex-shrink:0;margin-top:1px;appearance:none;-webkit-appearance:none;
+    background:var(--input-bg);transition:all 0.18s;position:relative;
+  }
+  .item-cb:checked{background:var(--success);border-color:var(--success);}
+  .item-cb:checked::after{content:'✓';position:absolute;top:-1px;left:2px;font-size:12px;color:#fff;font-weight:700;}
+  .item-text{flex:1;font-size:13px;color:var(--text-primary);word-break:break-word;line-height:1.45;}
+  .item-text.done{text-decoration:line-through;color:var(--text-muted);}
+  .item-actions{display:flex;gap:3px;flex-shrink:0;}
+  .icon-btn{background:none;border:none;cursor:pointer;color:var(--text-muted);font-size:15px;padding:3px 4px;border-radius:7px;transition:color 0.18s,background 0.18s;line-height:1;}
+  .icon-btn:hover{color:var(--text-primary);background:var(--pill-bg);}
+
+  .item-notes{font-size:12px;color:var(--text-muted);margin-top:5px;padding-left:26px;line-height:1.4;}
+  .item-meta{display:flex;align-items:center;gap:5px;margin-top:6px;padding-left:26px;flex-wrap:wrap;}
+  .badge{font-size:11px;padding:2px 7px;border-radius:8px;font-weight:600;}
+  .badge-high{background:var(--badge-high-bg);color:var(--badge-high-text);}
+  .badge-medium{background:var(--badge-medium-bg);color:var(--badge-medium-text);}
+  .badge-low{background:var(--badge-low-bg);color:var(--badge-low-text);}
+  .badge-date{background:var(--pill-bg);color:var(--text-secondary);font-weight:400;}
+
+  /* COMPLETED SUBSECTION */
+  .completed-section{margin-top:8px;border-top:1px dashed var(--completed-border);padding-top:8px;}
+  .completed-toggle-row{
+    font-size:11px;color:var(--text-muted);font-weight:600;text-transform:uppercase;
+    letter-spacing:0.5px;margin-bottom:6px;display:flex;align-items:center;gap:5px;
+    cursor:pointer;user-select:none;padding:3px 0;
+  }
+  .completed-toggle-row:hover{color:var(--text-secondary);}
+
+  /* MODAL */
+  .modal-overlay{
+    display:none;position:fixed;inset:0;z-index:200;
+    background:var(--modal-overlay);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px);
+    align-items:center;justify-content:center;padding:20px;
+  }
+  .modal-overlay.open{display:flex;}
+  .modal{
+    background:var(--glass-bg);backdrop-filter:var(--glass-blur);-webkit-backdrop-filter:var(--glass-blur);
+    border:1px solid var(--card-border);border-radius:26px;
+    padding:26px;width:100%;max-width:430px;
+    box-shadow:var(--shadow);animation:modalIn 0.22s ease;
+  }
+  @keyframes modalIn{from{opacity:0;transform:scale(0.94) translateY(12px);}to{opacity:1;transform:scale(1) translateY(0);}}
+  .modal-title{font-size:16px;font-weight:800;margin-bottom:18px;color:var(--text-primary);}
+  .form-group{margin-bottom:14px;}
+  .form-label{font-size:11px;font-weight:700;color:var(--text-muted);margin-bottom:5px;display:block;text-transform:uppercase;letter-spacing:0.5px;}
+  .form-input,.form-select,.form-textarea{
+    width:100%;padding:9px 13px;border-radius:13px;
+    border:1px solid var(--input-border);background:var(--input-bg);
+    backdrop-filter:blur(8px);color:var(--text-primary);
+    font-size:14px;font-family:inherit;outline:none;transition:border-color 0.2s;
+  }
+  .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);}
+  .form-select option{background:#f0eeff;color:#1a1a2e;}
+  body.dark .form-select option{background:#1c1040;color:#e8e4ff;}
+  .form-textarea{resize:vertical;min-height:72px;}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
+  .modal-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px;}
+
+  /* CONFIG MODAL */
+  .config-modal{max-width:500px;}
+  .config-field{margin-bottom:12px;}
+  .config-field label{font-size:11px;font-weight:700;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;display:block;margin-bottom:4px;}
+  .config-field input{
+    width:100%;padding:8px 12px;border-radius:11px;
+    border:1px solid var(--input-border);background:var(--input-bg);
+    color:var(--text-primary);font-size:13px;font-family:monospace;outline:none;
+  }
+  .config-field input:focus{border-color:var(--accent);}
+  .config-note{font-size:12px;color:var(--text-muted);line-height:1.5;margin-top:10px;padding:10px 12px;background:var(--pill-bg);border-radius:10px;}
+  .config-note a{color:var(--accent);text-decoration:none;}
+  .config-note a:hover{text-decoration:underline;}
+
+  /* TOAST */
+  .toast{
+    position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(10px);
+    background:linear-gradient(90deg,#6c63ff,#a78bfa);color:#fff;
+    padding:10px 24px;border-radius:22px;
+    font-size:13px;font-weight:700;z-index:300;
+    opacity:0;pointer-events:none;transition:opacity 0.3s,transform 0.3s;
+    box-shadow:0 4px 20px rgba(108,99,255,0.3);
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
+
+  /* STATUS FOOTER */
+  .status-footer{
+    position:fixed;bottom:0;left:0;right:0;
+    background:var(--toolbar-bg);backdrop-filter:var(--glass-blur);
+    border-top:1px solid var(--glass-border);
+    padding:5px 20px;font-size:11px;color:var(--text-muted);
+    text-align:center;z-index:90;
+  }
+
+  .file-input-label{cursor:pointer;}
+  .file-input-label input[type=file]{display:none;}
+
+  @media(max-width:640px){
+    .section-grid{grid-template-columns:1fr;}
+    .topbar{padding:8px 12px;gap:6px;}
+    .topbar-brand{font-size:15px;}
+    .btn{padding:6px 10px;font-size:12px;}
+    .main{padding:12px 10px 80px;}
+    .searchbar{padding:6px 12px;}
+    .form-row{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="topbar-brand">OpsTracker</div>
+  <span class="sync-badge offline" id="sync-badge">⬤ Offline</span>
+  <button class="btn btn-save" onclick="saveNow()">💾 Save Now</button>
+  <button class="btn" onclick="exportExcel()">📤 Export</button>
+  <label class="btn file-input-label">📥 Import<input type="file" accept=".xlsx,.xls" onchange="importExcel(this)"></label>
+  <button class="btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
+  <button class="btn" onclick="openConfig()" title="Database settings">⚙️ DB</button>
+</div>
+
+<div class="searchbar">
+  <input class="search-input" id="search-input" placeholder="🔍  Search all items..." oninput="renderAll()">
+  <select class="filter-sel" id="filter-priority" onchange="renderAll()">
+    <option value="">All priorities</option>
+    <option value="high">🔴 High</option>
+    <option value="medium">🟡 Medium</option>
+    <option value="low">🟢 Low</option>
+  </select>
+</div>
+
+<div id="setup-banner" class="setup-banner">
+  <p>⚡ <strong>Connect Supabase</strong> to sync across devices. Click <strong>⚙️ DB</strong> in the toolbar to add your credentials. Until then, data saves locally in this browser.</p>
+  <button class="btn btn-sm btn-accent" onclick="openConfig()">Connect now</button>
+  <button class="btn btn-sm" onclick="dismissBanner()">Later</button>
+</div>
+
+<div class="main">
+  <div class="section-grid" id="section-grid"></div>
+</div>
+
+<div class="status-footer" id="status-footer">Initialising...</div>
+
+<!-- ITEM MODAL -->
+<div class="modal-overlay" id="modal-overlay" onclick="overlayClick(event)">
+  <div class="modal">
+    <div class="modal-title" id="modal-title">Add Item</div>
+    <div class="form-group">
+      <label class="form-label">Title *</label>
+      <input class="form-input" id="f-title" placeholder="Enter title..." maxlength="250">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Notes</label>
+      <textarea class="form-textarea" id="f-notes" placeholder="Optional notes..."></textarea>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Date</label>
+        <input class="form-input" id="f-date" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Priority</label>
+        <select class="form-select" id="f-priority">
+          <option value="medium">🟡 Medium</option>
+          <option value="high">🔴 High</option>
+          <option value="low">🟢 Low</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-accent" onclick="saveItem()">Save Item</button>
+    </div>
+  </div>
+</div>
+
+<!-- CONFIG MODAL -->
+<div class="modal-overlay" id="config-overlay" onclick="configOverlayClick(event)">
+  <div class="modal config-modal">
+    <div class="modal-title">⚙️ Supabase Configuration</div>
+    <div class="config-field">
+      <label>Supabase URL</label>
+      <input id="cfg-url" placeholder="https://xxxxxxxxxxxx.supabase.co" autocomplete="off">
+    </div>
+    <div class="config-field">
+      <label>Supabase Anon Key</label>
+      <input id="cfg-key" placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..." autocomplete="off">
+    </div>
+    <div class="config-note">
+      These are saved in your browser only. Get them from your
+      <a href="https://supabase.com/dashboard" target="_blank">Supabase dashboard</a>
+      → Project Settings → API.<br><br>
+      <strong>First time?</strong> Run the SQL from <code>supabase_setup.sql</code>
+      in your Supabase SQL editor before connecting.
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeConfig()">Cancel</button>
+      <button class="btn btn-danger btn-sm" onclick="clearConfig()">Clear</button>
+      <button class="btn btn-accent" onclick="saveConfig()">Connect</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ════════════════════════════════════════
+   CONSTANTS
+════════════════════════════════════════ */
+const SECTIONS = [
+  { id:'notes',        label:'Notes',        color:'#6c63ff' },
+  { id:'it_calls',     label:'IT Calls',     color:'#3b82f6' },
+  { id:'anpr_calls',   label:'ANPR Calls',   color:'#8b5cf6' },
+  { id:'piq_calls',    label:'PIQ Calls',    color:'#06b6d4' },
+  { id:'viq_calls',    label:'VIQ Calls',    color:'#f59e0b' },
+  { id:'ciq_calls',    label:'CIQ Calls',    color:'#ef4444' },
+  { id:'appointments', label:'Appointments', color:'#10b981' },
+];
+const LS_DATA    = 'opstracker_v4';
+const LS_THEME   = 'opstracker_theme';
+const LS_BANNER  = 'opstracker_banner';
+const LS_SBURL   = 'opstracker_sb_url';
+const LS_SBKEY   = 'opstracker_sb_key';
+
+/* ════════════════════════════════════════
+   STATE
+════════════════════════════════════════ */
+let state = {};
+let expandedDone = {};
+let isDark = false;
+let saveTimer = null;
+let modalSection = null;
+let modalItemId = null;
+let supabase = null;
+let realtimeSub = null;
+let isSyncing = false;
+
+SECTIONS.forEach(s => { state[s.id] = []; expandedDone[s.id] = false; });
+
+/* ════════════════════════════════════════
+   SUPABASE INIT
+════════════════════════════════════════ */
+function initSupabase() {
+  const url = localStorage.getItem(LS_SBURL);
+  const key = localStorage.getItem(LS_SBKEY);
+  if (!url || !key) { setSyncBadge('offline','⬤ Local only'); return false; }
+  try {
+    supabase = window.supabase.createClient(url, key);
+    setSyncBadge('syncing','↻ Connecting...');
+    return true;
+  } catch(e) {
+    setSyncBadge('error','✕ DB error');
+    return false;
+  }
+}
+
+async function connectAndLoad() {
+  if (!supabase) { loadLocal(); return; }
+  setSyncBadge('syncing','↻ Syncing...');
+  try {
+    const { data, error } = await supabase
+      .from('opstracker_state')
+      .select('*')
+      .eq('id', 1)
+      .maybeSingle();
+    if (error) throw error;
+    if (data && data.payload) {
+      const remote = JSON.parse(data.payload);
+      SECTIONS.forEach(s => { state[s.id] = remote[s.id] || []; });
+      // also persist locally as backup
+      persistLocal();
+    } else {
+      // first run: push local data up
+      loadLocal();
+      await pushToSupabase(true);
+    }
+    setSyncBadge('synced','✓ Synced');
+    subscribeRealtime();
+  } catch(e) {
+    console.error('Supabase load error:', e);
+    setSyncBadge('error','✕ DB error — using local');
+    loadLocal();
+  }
+  renderAll();
+}
+
+async function pushToSupabase(silent) {
+  if (!supabase || isSyncing) return;
+  isSyncing = true;
+  setSyncBadge('syncing','↻ Saving...');
+  try {
+    const payload = {};
+    SECTIONS.forEach(s => { payload[s.id] = state[s.id]; });
+    const { error } = await supabase
+      .from('opstracker_state')
+      .upsert({ id: 1, payload: JSON.stringify(payload), updated_at: new Date().toISOString() });
+    if (error) throw error;
+    setSyncBadge('synced','✓ Synced ' + new Date().toLocaleTimeString());
+    setStatus('Saved to Supabase ' + new Date().toLocaleTimeString());
+    if (!silent) showToast('Saved ✓');
+  } catch(e) {
+    setSyncBadge('error','✕ Save failed');
+    setStatus('Supabase save failed — check connection');
+    if (!silent) showToast('Save failed ✗');
+  }
+  isSyncing = false;
+}
+
+function subscribeRealtime() {
+  if (!supabase) return;
+  if (realtimeSub) { supabase.removeChannel(realtimeSub); realtimeSub = null; }
+  realtimeSub = supabase
+    .channel('opstracker-changes')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'opstracker_state' }, payload => {
+      if (payload.new && payload.new.payload) {
+        const remote = JSON.parse(payload.new.payload);
+        SECTIONS.forEach(s => { state[s.id] = remote[s.id] || []; });
+        renderAll();
+        setSyncBadge('synced','✓ Live sync');
+        setStatus('Real-time update received ' + new Date().toLocaleTimeString());
+      }
+    })
+    .subscribe();
+}
+
+/* ════════════════════════════════════════
+   LOCAL STORAGE
+════════════════════════════════════════ */
+function loadLocal() {
+  try {
+    const raw = localStorage.getItem(LS_DATA);
+    if (raw) {
+      const d = JSON.parse(raw);
+      SECTIONS.forEach(s => { if (d[s.id]) state[s.id] = d[s.id]; });
+    }
+    setStatus('Loaded from local storage');
+  } catch(e) { setStatus('Could not load data'); }
+}
+
+function persistLocal() {
+  try {
+    const payload = {};
+    SECTIONS.forEach(s => { payload[s.id] = state[s.id]; });
+    localStorage.setItem(LS_DATA, JSON.stringify(payload));
+  } catch(e) { /* ignore */ }
+}
+
+function saveNow() {
+  persistLocal();
+  if (supabase) { pushToSupabase(false); }
+  else { showToast('Saved locally ✓'); setStatus('Saved locally ' + new Date().toLocaleTimeString()); }
+}
+
+function autoSave() {
+  persistLocal();
+  clearTimeout(saveTimer);
+  if (supabase) { saveTimer = setTimeout(() => pushToSupabase(true), 1400); }
+  else { setStatus('Saved locally ' + new Date().toLocaleTimeString()); }
+}
+
+/* ════════════════════════════════════════
+   CONFIG
+════════════════════════════════════════ */
+function openConfig() {
+  document.getElementById('cfg-url').value = localStorage.getItem(LS_SBURL) || '';
+  document.getElementById('cfg-key').value = localStorage.getItem(LS_SBKEY) || '';
+  document.getElementById('config-overlay').classList.add('open');
+}
+function closeConfig() { document.getElementById('config-overlay').classList.remove('open'); }
+function configOverlayClick(e) { if (e.target.id === 'config-overlay') closeConfig(); }
+function clearConfig() {
+  if (!confirm('Remove Supabase credentials? App will use local storage only.')) return;
+  localStorage.removeItem(LS_SBURL); localStorage.removeItem(LS_SBKEY);
+  supabase = null;
+  if (realtimeSub) { try { supabase && supabase.removeChannel(realtimeSub); } catch(e){} realtimeSub = null; }
+  setSyncBadge('offline','⬤ Local only');
+  closeConfig(); showToast('Credentials cleared');
+}
+async function saveConfig() {
+  const url = document.getElementById('cfg-url').value.trim();
+  const key = document.getElementById('cfg-key').value.trim();
+  if (!url || !key) { showToast('Both fields are required'); return; }
+  localStorage.setItem(LS_SBURL, url);
+  localStorage.setItem(LS_SBKEY, key);
+  closeConfig();
+  dismissBanner();
+  initSupabase();
+  await connectAndLoad();
+}
+function dismissBanner() {
+  localStorage.setItem(LS_BANNER, '1');
+  document.getElementById('setup-banner').classList.add('hidden');
+}
+
+/* ════════════════════════════════════════
+   UI HELPERS
+════════════════════════════════════════ */
+function setSyncBadge(cls, text) {
+  const b = document.getElementById('sync-badge');
+  b.className = 'sync-badge ' + cls;
+  b.textContent = text;
+}
+function setStatus(msg) { const el = document.getElementById('status-footer'); if(el) el.textContent = msg; }
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._tid); t._tid = setTimeout(() => t.classList.remove('show'), 2200);
+}
+
+/* ════════════════════════════════════════
+   THEME
+════════════════════════════════════════ */
+function toggleTheme() {
+  isDark = !isDark;
+  isDark ? document.body.classList.add('dark') : document.body.classList.remove('dark');
+  document.getElementById('theme-btn').textContent = isDark ? '☀️ Light' : '🌙 Dark';
+  localStorage.setItem(LS_THEME, isDark ? '1' : '0');
+  autoSave();
+}
+function loadTheme() {
+  isDark = localStorage.getItem(LS_THEME) === '1';
+  if (isDark) { document.body.classList.add('dark'); document.getElementById('theme-btn').textContent = '☀️ Light'; }
+}
+
+/* ════════════════════════════════════════
+   UTILS
+════════════════════════════════════════ */
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,8); }
+function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+function todayStr() { return new Date().toISOString().slice(0,10); }
+
+/* ════════════════════════════════════════
+   RENDER
+════════════════════════════════════════ */
+function renderAll() {
+  const q  = (document.getElementById('search-input').value || '').toLowerCase();
+  const fp = document.getElementById('filter-priority').value;
+  const grid = document.getElementById('section-grid');
+  grid.innerHTML = '';
+  SECTIONS.forEach(s => grid.appendChild(buildSectionCard(s, q, fp)));
+}
+
+function matchesFilter(item, q, fp) {
+  if (fp && item.priority !== fp) return false;
+  if (q) {
+    const hay = ((item.title||'') + ' ' + (item.notes||'')).toLowerCase();
+    if (!hay.includes(q)) return false;
+  }
+  return true;
+}
+
+function buildSectionCard(s, q, fp) {
+  const items  = state[s.id] || [];
+  const active = items.filter(i => !i.completed && matchesFilter(i,q,fp));
+  const done   = items.filter(i =>  i.completed && matchesFilter(i,q,fp));
+  const po = {high:0,medium:1,low:2};
+  active.sort((a,b) => (po[a.priority]||1)-(po[b.priority]||1) || (a.date||'').localeCompare(b.date||''));
+
+  const wrap = document.createElement('div');
+  wrap.className = 'section-card';
+  let h = `
+    <div class="section-header">
+      <div class="section-dot" style="background:${s.color}"></div>
+      <div class="section-title">${s.label}</div>
+      <div class="section-count">${active.length} active${done.length?' · '+done.length+' done':''}</div>
+    </div>
+    <div class="section-body">
+      <div style="margin-bottom:8px"><button class="btn btn-sm" onclick="openAdd('${s.id}')">+ Add item</button></div>
+  `;
+  active.forEach(item => { h += itemHTML(item, s.id); });
+  if (done.length) {
+    const exp = expandedDone[s.id];
+    h += `<div class="completed-section">
+      <div class="completed-toggle-row" onclick="toggleDone('${s.id}')">
+        <span>${exp?'▾':'▸'}</span>Completed (${done.length})
+      </div>`;
+    if (exp) done.forEach(item => { h += itemHTML(item, s.id); });
+    h += '</div>';
+  }
+  h += '</div>';
+  wrap.innerHTML = h;
+  return wrap;
+}
+
+function itemHTML(item, sid) {
+  const p = item.priority || 'medium';
+  const labels = {high:'High',medium:'Medium',low:'Low'};
+  return `
+    <div class="item-card ${item.completed?'completed':''} p-${p}">
+      <div class="item-top">
+        <input type="checkbox" class="item-cb" ${item.completed?'checked':''} onchange="toggleItem('${sid}','${item.id}',this.checked)">
+        <div class="item-text ${item.completed?'done':''}">${esc(item.title)}</div>
+        <div class="item-actions">
+          <button class="icon-btn" title="Edit" onclick="openEdit('${sid}','${item.id}')">✏️</button>
+          <button class="icon-btn" title="Delete" onclick="delItem('${sid}','${item.id}')">🗑️</button>
+        </div>
+      </div>
+      ${item.notes?`<div class="item-notes">${esc(item.notes)}</div>`:''}
+      <div class="item-meta">
+        <span class="badge badge-${p}">${labels[p]}</span>
+        ${item.date?`<span class="badge badge-date">📅 ${item.date}</span>`:''}
+        ${item.completed&&item.completedAt?`<span class="badge badge-date">✓ ${new Date(item.completedAt).toLocaleDateString()}</span>`:''}
+      </div>
+    </div>`;
+}
+
+/* ════════════════════════════════════════
+   ITEM ACTIONS
+════════════════════════════════════════ */
+function toggleItem(sid, id, checked) {
+  const item = (state[sid]||[]).find(i => i.id===id);
+  if (!item) return;
+  item.completed = checked;
+  item.completedAt = checked ? new Date().toISOString() : null;
+  autoSave(); renderAll();
+}
+function delItem(sid, id) {
+  if (!confirm('Delete this item?')) return;
+  state[sid] = (state[sid]||[]).filter(i => i.id!==id);
+  autoSave(); renderAll();
+}
+function toggleDone(sid) { expandedDone[sid] = !expandedDone[sid]; renderAll(); }
+
+/* ════════════════════════════════════════
+   MODAL
+════════════════════════════════════════ */
+function openAdd(sid) {
+  modalSection = sid; modalItemId = null;
+  const s = SECTIONS.find(x => x.id===sid);
+  document.getElementById('modal-title').textContent = 'Add to ' + s.label;
+  document.getElementById('f-title').value = '';
+  document.getElementById('f-notes').value = '';
+  document.getElementById('f-date').value = todayStr();
+  document.getElementById('f-priority').value = 'medium';
+  document.getElementById('f-title').style.borderColor = '';
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('f-title').focus(), 80);
+}
+function openEdit(sid, id) {
+  modalSection = sid; modalItemId = id;
+  const item = (state[sid]||[]).find(i => i.id===id);
+  if (!item) return;
+  const s = SECTIONS.find(x => x.id===sid);
+  document.getElementById('modal-title').textContent = 'Edit — ' + s.label;
+  document.getElementById('f-title').value = item.title||'';
+  document.getElementById('f-notes').value = item.notes||'';
+  document.getElementById('f-date').value = item.date||'';
+  document.getElementById('f-priority').value = item.priority||'medium';
+  document.getElementById('f-title').style.borderColor = '';
+  document.getElementById('modal-overlay').classList.add('open');
+  setTimeout(() => document.getElementById('f-title').focus(), 80);
+}
+function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); modalSection=null; modalItemId=null; }
+function overlayClick(e) { if (e.target.id==='modal-overlay') closeModal(); }
+function saveItem() {
+  const title = document.getElementById('f-title').value.trim();
+  if (!title) { document.getElementById('f-title').style.borderColor='var(--danger)'; document.getElementById('f-title').focus(); return; }
+  const date = document.getElementById('f-date').value;
+  const priority = document.getElementById('f-priority').value;
+  const notes = document.getElementById('f-notes').value.trim();
+  if (modalItemId) {
+    const item = (state[modalSection]||[]).find(i => i.id===modalItemId);
+    if (item) { item.title=title; item.notes=notes; item.date=date; item.priority=priority; }
+  } else {
+    if (!state[modalSection]) state[modalSection]=[];
+    state[modalSection].push({ id:uid(), title, notes, date, priority, completed:false, completedAt:null, createdAt:new Date().toISOString() });
+  }
+  closeModal(); autoSave(); renderAll();
+}
+
+/* ════════════════════════════════════════
+   EXCEL
+════════════════════════════════════════ */
+function exportExcel() {
+  const wb = XLSX.utils.book_new();
+  SECTIONS.forEach(s => {
+    const rows = (state[s.id]||[]).map(i => ({
+      Title:i.title||'', Notes:i.notes||'', Date:i.date||'', Priority:i.priority||'medium',
+      Completed:i.completed?'Yes':'No',
+      'Completed At':i.completedAt?new Date(i.completedAt).toLocaleString():'',
+      'Created At':i.createdAt?new Date(i.createdAt).toLocaleString():''
+    }));
+    const ws = XLSX.utils.json_to_sheet(rows.length?rows:[{Title:'',Notes:'',Date:'',Priority:'',Completed:'','Completed At':'','Created At':''}]);
+    ws['!cols']=[{wch:35},{wch:45},{wch:12},{wch:10},{wch:10},{wch:20},{wch:20}];
+    XLSX.utils.book_append_sheet(wb, ws, s.label.slice(0,31));
+  });
+  XLSX.writeFile(wb, 'OpsTracker_'+todayStr()+'.xlsx');
+  showToast('Exported ✓');
+}
+function importExcel(input) {
+  const file = input.files[0]; if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result,{type:'binary'});
+      let count = 0;
+      SECTIONS.forEach(s => {
+        const sheetName = Object.keys(wb.Sheets).find(n => n===s.label||n===s.label.slice(0,31));
+        if (!sheetName) return;
+        const rows = XLSX.utils.sheet_to_json(wb.Sheets[sheetName]);
+        rows.forEach(row => {
+          if (!row.Title) return;
+          if (!state[s.id]) state[s.id]=[];
+          state[s.id].push({ id:uid(), title:String(row.Title||''), notes:String(row.Notes||''), date:String(row.Date||''), priority:String(row.Priority||'medium').toLowerCase(), completed:String(row.Completed||'').toLowerCase()==='yes', completedAt:null, createdAt:new Date().toISOString() });
+          count++;
+        });
+      });
+      autoSave(); renderAll(); showToast('Imported '+count+' items ✓');
+    } catch(err) { showToast('Import failed — check file format'); }
+    input.value='';
+  };
+  reader.readAsBinaryString(file);
+}
+
+/* ════════════════════════════════════════
+   KEYBOARD
+════════════════════════════════════════ */
+document.addEventListener('keydown', e => {
+  if (e.key==='Escape') { closeModal(); closeConfig(); }
+  if ((e.ctrlKey||e.metaKey)&&e.key==='s') { e.preventDefault(); saveNow(); }
+  if (e.key==='Enter' && document.getElementById('modal-overlay').classList.contains('open')) {
+    if (document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='BUTTON') { e.preventDefault(); saveItem(); }
+  }
+});
+
+/* ════════════════════════════════════════
+   INIT
+════════════════════════════════════════ */
+loadTheme();
+if (localStorage.getItem(LS_BANNER)==='1') dismissBanner();
+initSupabase();
+connectAndLoad();
+</script>
+</body>
+</html>
