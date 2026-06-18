@@ -289,16 +289,16 @@
 <div class="topbar">
   <div class="topbar-brand">OpsTracker</div>
   <span class="sync-badge offline" id="sync-badge">⬤ Offline</span>
-  <button class="btn btn-save" onclick="saveNow()">💾 Save Now</button>
-  <button class="btn" onclick="exportExcel()">📤 Export</button>
-  <label class="btn file-input-label">📥 Import<input type="file" accept=".xlsx,.xls" onchange="importExcel(this)"></label>
-  <button class="btn" id="theme-btn" onclick="toggleTheme()">🌙 Dark</button>
-  <button class="btn" onclick="openConfig()" title="Database settings">⚙️ DB</button>
+  <button class="btn btn-save" id="btn-save">💾 Save Now</button>
+  <button class="btn" id="btn-export">📤 Export</button>
+  <label class="btn file-input-label">📥 Import<input type="file" id="import-file" accept=".xlsx,.xls"></label>
+  <button class="btn" id="theme-btn">🌙 Dark</button>
+  <button class="btn" id="btn-db" title="Database settings">⚙️ DB</button>
 </div>
 
 <div class="searchbar">
-  <input class="search-input" id="search-input" placeholder="🔍  Search all items..." oninput="renderAll()">
-  <select class="filter-sel" id="filter-priority" onchange="renderAll()">
+  <input class="search-input" id="search-input" placeholder="🔍  Search all items...">
+  <select class="filter-sel" id="filter-priority">
     <option value="">All priorities</option>
     <option value="high">🔴 High</option>
     <option value="medium">🟡 Medium</option>
@@ -308,8 +308,8 @@
 
 <div id="setup-banner" class="setup-banner">
   <p>⚡ <strong>Connect Supabase</strong> to sync across devices. Click <strong>⚙️ DB</strong> in the toolbar to add your credentials. Until then, data saves locally in this browser.</p>
-  <button class="btn btn-sm btn-accent" onclick="openConfig()">Connect now</button>
-  <button class="btn btn-sm" onclick="dismissBanner()">Later</button>
+  <button class="btn btn-sm btn-accent" id="banner-connect">Connect now</button>
+  <button class="btn btn-sm" id="banner-later">Later</button>
 </div>
 
 <div class="main">
@@ -319,7 +319,7 @@
 <div class="status-footer" id="status-footer">Initialising...</div>
 
 <!-- ITEM MODAL -->
-<div class="modal-overlay" id="modal-overlay" onclick="overlayClick(event)">
+<div class="modal-overlay" id="modal-overlay">
   <div class="modal">
     <div class="modal-title" id="modal-title">Add Item</div>
     <div class="form-group">
@@ -345,14 +345,14 @@
       </div>
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeModal()">Cancel</button>
-      <button class="btn btn-accent" onclick="saveItem()">Save Item</button>
+      <button class="btn" id="modal-cancel">Cancel</button>
+      <button class="btn btn-accent" id="modal-save">Save Item</button>
     </div>
   </div>
 </div>
 
 <!-- CONFIG MODAL -->
-<div class="modal-overlay" id="config-overlay" onclick="configOverlayClick(event)">
+<div class="modal-overlay" id="config-overlay">
   <div class="modal config-modal">
     <div class="modal-title">⚙️ Supabase Configuration</div>
     <div class="config-field">
@@ -371,9 +371,9 @@
       in your Supabase SQL editor before connecting.
     </div>
     <div class="modal-actions">
-      <button class="btn" onclick="closeConfig()">Cancel</button>
-      <button class="btn btn-danger btn-sm" onclick="clearConfig()">Clear</button>
-      <button class="btn btn-accent" onclick="saveConfig()">Connect</button>
+      <button class="btn" id="cfg-cancel">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="cfg-clear">Clear</button>
+      <button class="btn btn-accent" id="cfg-save">Connect</button>
     </div>
   </div>
 </div>
@@ -393,11 +393,11 @@ const SECTIONS = [
   { id:'ciq_calls',    label:'CIQ Calls',    color:'#ef4444' },
   { id:'appointments', label:'Appointments', color:'#10b981' },
 ];
-const LS_DATA    = 'opstracker_v4';
-const LS_THEME   = 'opstracker_theme';
-const LS_BANNER  = 'opstracker_banner';
-const LS_SBURL   = 'opstracker_sb_url';
-const LS_SBKEY   = 'opstracker_sb_key';
+const LS_DATA   = 'opstracker_v4';
+const LS_THEME  = 'opstracker_theme';
+const LS_BANNER = 'opstracker_banner';
+const LS_SBURL  = 'opstracker_sb_url';
+const LS_SBKEY  = 'opstracker_sb_key';
 
 /* ════════════════════════════════════════
    STATE
@@ -408,46 +408,44 @@ let isDark = false;
 let saveTimer = null;
 let modalSection = null;
 let modalItemId = null;
-let supabase = null;
+let sb = null;          // supabase client
 let realtimeSub = null;
 let isSyncing = false;
 
 SECTIONS.forEach(s => { state[s.id] = []; expandedDone[s.id] = false; });
 
 /* ════════════════════════════════════════
-   SUPABASE INIT
+   SUPABASE
 ════════════════════════════════════════ */
 function initSupabase() {
   const url = localStorage.getItem(LS_SBURL);
   const key = localStorage.getItem(LS_SBKEY);
   if (!url || !key) { setSyncBadge('offline','⬤ Local only'); return false; }
   try {
-    supabase = window.supabase.createClient(url, key);
+    if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
+      setSyncBadge('error','✕ Supabase lib failed'); return false;
+    }
+    sb = window.supabase.createClient(url, key);
     setSyncBadge('syncing','↻ Connecting...');
     return true;
   } catch(e) {
-    setSyncBadge('error','✕ DB error');
-    return false;
+    console.error('Supabase init error:', e);
+    setSyncBadge('error','✕ DB error'); return false;
   }
 }
 
 async function connectAndLoad() {
-  if (!supabase) { loadLocal(); return; }
+  if (!sb) { loadLocal(); renderAll(); return; }
   setSyncBadge('syncing','↻ Syncing...');
   try {
-    const { data, error } = await supabase
-      .from('opstracker_state')
-      .select('*')
-      .eq('id', 1)
-      .maybeSingle();
+    const { data, error } = await sb
+      .from('opstracker_state').select('*').eq('id',1).maybeSingle();
     if (error) throw error;
     if (data && data.payload) {
       const remote = JSON.parse(data.payload);
       SECTIONS.forEach(s => { state[s.id] = remote[s.id] || []; });
-      // also persist locally as backup
       persistLocal();
     } else {
-      // first run: push local data up
       loadLocal();
       await pushToSupabase(true);
     }
@@ -455,49 +453,45 @@ async function connectAndLoad() {
     subscribeRealtime();
   } catch(e) {
     console.error('Supabase load error:', e);
-    setSyncBadge('error','✕ DB error — using local');
+    setSyncBadge('error','✕ DB error — local');
     loadLocal();
   }
   renderAll();
 }
 
 async function pushToSupabase(silent) {
-  if (!supabase || isSyncing) return;
+  if (!sb || isSyncing) return;
   isSyncing = true;
   setSyncBadge('syncing','↻ Saving...');
   try {
     const payload = {};
     SECTIONS.forEach(s => { payload[s.id] = state[s.id]; });
-    const { error } = await supabase
-      .from('opstracker_state')
-      .upsert({ id: 1, payload: JSON.stringify(payload), updated_at: new Date().toISOString() });
+    const { error } = await sb.from('opstracker_state')
+      .upsert({ id:1, payload:JSON.stringify(payload), updated_at:new Date().toISOString() });
     if (error) throw error;
-    setSyncBadge('synced','✓ Synced ' + new Date().toLocaleTimeString());
-    setStatus('Saved to Supabase ' + new Date().toLocaleTimeString());
+    setSyncBadge('synced','✓ Synced '+new Date().toLocaleTimeString());
+    setStatus('Saved to Supabase '+new Date().toLocaleTimeString());
     if (!silent) showToast('Saved ✓');
   } catch(e) {
     setSyncBadge('error','✕ Save failed');
-    setStatus('Supabase save failed — check connection');
+    setStatus('Supabase save failed');
     if (!silent) showToast('Save failed ✗');
   }
   isSyncing = false;
 }
 
 function subscribeRealtime() {
-  if (!supabase) return;
-  if (realtimeSub) { supabase.removeChannel(realtimeSub); realtimeSub = null; }
-  realtimeSub = supabase
-    .channel('opstracker-changes')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'opstracker_state' }, payload => {
+  if (!sb) return;
+  if (realtimeSub) { try { sb.removeChannel(realtimeSub); } catch(e){} realtimeSub = null; }
+  realtimeSub = sb.channel('opstracker-changes')
+    .on('postgres_changes',{ event:'UPDATE', schema:'public', table:'opstracker_state' }, payload => {
       if (payload.new && payload.new.payload) {
         const remote = JSON.parse(payload.new.payload);
         SECTIONS.forEach(s => { state[s.id] = remote[s.id] || []; });
         renderAll();
         setSyncBadge('synced','✓ Live sync');
-        setStatus('Real-time update received ' + new Date().toLocaleTimeString());
       }
-    })
-    .subscribe();
+    }).subscribe();
 }
 
 /* ════════════════════════════════════════
@@ -516,27 +510,26 @@ function loadLocal() {
 
 function persistLocal() {
   try {
-    const payload = {};
-    SECTIONS.forEach(s => { payload[s.id] = state[s.id]; });
-    localStorage.setItem(LS_DATA, JSON.stringify(payload));
-  } catch(e) { /* ignore */ }
+    const p = {}; SECTIONS.forEach(s => { p[s.id] = state[s.id]; });
+    localStorage.setItem(LS_DATA, JSON.stringify(p));
+  } catch(e) {}
 }
 
 function saveNow() {
   persistLocal();
-  if (supabase) { pushToSupabase(false); }
-  else { showToast('Saved locally ✓'); setStatus('Saved locally ' + new Date().toLocaleTimeString()); }
+  if (sb) pushToSupabase(false);
+  else { showToast('Saved locally ✓'); setStatus('Saved locally '+new Date().toLocaleTimeString()); }
 }
 
 function autoSave() {
   persistLocal();
   clearTimeout(saveTimer);
-  if (supabase) { saveTimer = setTimeout(() => pushToSupabase(true), 1400); }
-  else { setStatus('Saved locally ' + new Date().toLocaleTimeString()); }
+  if (sb) saveTimer = setTimeout(() => pushToSupabase(true), 1400);
+  else setStatus('Saved locally '+new Date().toLocaleTimeString());
 }
 
 /* ════════════════════════════════════════
-   CONFIG
+   CONFIG MODAL
 ════════════════════════════════════════ */
 function openConfig() {
   document.getElementById('cfg-url').value = localStorage.getItem(LS_SBURL) || '';
@@ -544,15 +537,15 @@ function openConfig() {
   document.getElementById('config-overlay').classList.add('open');
 }
 function closeConfig() { document.getElementById('config-overlay').classList.remove('open'); }
-function configOverlayClick(e) { if (e.target.id === 'config-overlay') closeConfig(); }
+
 function clearConfig() {
   if (!confirm('Remove Supabase credentials? App will use local storage only.')) return;
   localStorage.removeItem(LS_SBURL); localStorage.removeItem(LS_SBKEY);
-  supabase = null;
-  if (realtimeSub) { try { supabase && supabase.removeChannel(realtimeSub); } catch(e){} realtimeSub = null; }
+  sb = null; realtimeSub = null;
   setSyncBadge('offline','⬤ Local only');
   closeConfig(); showToast('Credentials cleared');
 }
+
 async function saveConfig() {
   const url = document.getElementById('cfg-url').value.trim();
   const key = document.getElementById('cfg-key').value.trim();
@@ -564,8 +557,9 @@ async function saveConfig() {
   initSupabase();
   await connectAndLoad();
 }
+
 function dismissBanner() {
-  localStorage.setItem(LS_BANNER, '1');
+  localStorage.setItem(LS_BANNER,'1');
   document.getElementById('setup-banner').classList.add('hidden');
 }
 
@@ -619,10 +613,7 @@ function renderAll() {
 
 function matchesFilter(item, q, fp) {
   if (fp && item.priority !== fp) return false;
-  if (q) {
-    const hay = ((item.title||'') + ' ' + (item.notes||'')).toLowerCase();
-    if (!hay.includes(q)) return false;
-  }
+  if (q) { const hay = ((item.title||'')+' '+(item.notes||'')).toLowerCase(); if (!hay.includes(q)) return false; }
   return true;
 }
 
@@ -631,7 +622,7 @@ function buildSectionCard(s, q, fp) {
   const active = items.filter(i => !i.completed && matchesFilter(i,q,fp));
   const done   = items.filter(i =>  i.completed && matchesFilter(i,q,fp));
   const po = {high:0,medium:1,low:2};
-  active.sort((a,b) => (po[a.priority]||1)-(po[b.priority]||1) || (a.date||'').localeCompare(b.date||''));
+  active.sort((a,b) => (po[a.priority]||1)-(po[b.priority]||1)||(a.date||'').localeCompare(b.date||''));
 
   const wrap = document.createElement('div');
   wrap.className = 'section-card';
@@ -642,13 +633,14 @@ function buildSectionCard(s, q, fp) {
       <div class="section-count">${active.length} active${done.length?' · '+done.length+' done':''}</div>
     </div>
     <div class="section-body">
-      <div style="margin-bottom:8px"><button class="btn btn-sm" onclick="openAdd('${s.id}')">+ Add item</button></div>
-  `;
+      <div style="margin-bottom:8px">
+        <button class="btn btn-sm add-item-btn" data-section="${s.id}">+ Add item</button>
+      </div>`;
   active.forEach(item => { h += itemHTML(item, s.id); });
   if (done.length) {
     const exp = expandedDone[s.id];
     h += `<div class="completed-section">
-      <div class="completed-toggle-row" onclick="toggleDone('${s.id}')">
+      <div class="completed-toggle-row toggle-done-btn" data-section="${s.id}">
         <span>${exp?'▾':'▸'}</span>Completed (${done.length})
       </div>`;
     if (exp) done.forEach(item => { h += itemHTML(item, s.id); });
@@ -663,13 +655,13 @@ function itemHTML(item, sid) {
   const p = item.priority || 'medium';
   const labels = {high:'High',medium:'Medium',low:'Low'};
   return `
-    <div class="item-card ${item.completed?'completed':''} p-${p}">
+    <div class="item-card ${item.completed?'completed':''} p-${p}" data-id="${item.id}" data-section="${sid}">
       <div class="item-top">
-        <input type="checkbox" class="item-cb" ${item.completed?'checked':''} onchange="toggleItem('${sid}','${item.id}',this.checked)">
+        <input type="checkbox" class="item-cb toggle-item-cb" ${item.completed?'checked':''} data-id="${item.id}" data-section="${sid}">
         <div class="item-text ${item.completed?'done':''}">${esc(item.title)}</div>
         <div class="item-actions">
-          <button class="icon-btn" title="Edit" onclick="openEdit('${sid}','${item.id}')">✏️</button>
-          <button class="icon-btn" title="Delete" onclick="delItem('${sid}','${item.id}')">🗑️</button>
+          <button class="icon-btn edit-item-btn" data-id="${item.id}" data-section="${sid}" title="Edit">✏️</button>
+          <button class="icon-btn del-item-btn" data-id="${item.id}" data-section="${sid}" title="Delete">🗑️</button>
         </div>
       </div>
       ${item.notes?`<div class="item-notes">${esc(item.notes)}</div>`:''}
@@ -699,12 +691,12 @@ function delItem(sid, id) {
 function toggleDone(sid) { expandedDone[sid] = !expandedDone[sid]; renderAll(); }
 
 /* ════════════════════════════════════════
-   MODAL
+   ITEM MODAL
 ════════════════════════════════════════ */
 function openAdd(sid) {
   modalSection = sid; modalItemId = null;
   const s = SECTIONS.find(x => x.id===sid);
-  document.getElementById('modal-title').textContent = 'Add to ' + s.label;
+  document.getElementById('modal-title').textContent = 'Add to '+s.label;
   document.getElementById('f-title').value = '';
   document.getElementById('f-notes').value = '';
   document.getElementById('f-date').value = todayStr();
@@ -718,7 +710,7 @@ function openEdit(sid, id) {
   const item = (state[sid]||[]).find(i => i.id===id);
   if (!item) return;
   const s = SECTIONS.find(x => x.id===sid);
-  document.getElementById('modal-title').textContent = 'Edit — ' + s.label;
+  document.getElementById('modal-title').textContent = 'Edit — '+s.label;
   document.getElementById('f-title').value = item.title||'';
   document.getElementById('f-notes').value = item.notes||'';
   document.getElementById('f-date').value = item.date||'';
@@ -728,7 +720,6 @@ function openEdit(sid, id) {
   setTimeout(() => document.getElementById('f-title').focus(), 80);
 }
 function closeModal() { document.getElementById('modal-overlay').classList.remove('open'); modalSection=null; modalItemId=null; }
-function overlayClick(e) { if (e.target.id==='modal-overlay') closeModal(); }
 function saveItem() {
   const title = document.getElementById('f-title').value.trim();
   if (!title) { document.getElementById('f-title').style.borderColor='var(--danger)'; document.getElementById('f-title').focus(); return; }
@@ -749,10 +740,11 @@ function saveItem() {
    EXCEL
 ════════════════════════════════════════ */
 function exportExcel() {
+  if (typeof XLSX === 'undefined') { showToast('XLSX library not loaded yet'); return; }
   const wb = XLSX.utils.book_new();
   SECTIONS.forEach(s => {
     const rows = (state[s.id]||[]).map(i => ({
-      Title:i.title||'', Notes:i.notes||'', Date:i.date||'', Priority:i.priority||'medium',
+      Title:i.title||'',Notes:i.notes||'',Date:i.date||'',Priority:i.priority||'medium',
       Completed:i.completed?'Yes':'No',
       'Completed At':i.completedAt?new Date(i.completedAt).toLocaleString():'',
       'Created At':i.createdAt?new Date(i.createdAt).toLocaleString():''
@@ -765,6 +757,7 @@ function exportExcel() {
   showToast('Exported ✓');
 }
 function importExcel(input) {
+  if (typeof XLSX === 'undefined') { showToast('XLSX library not loaded yet'); return; }
   const file = input.files[0]; if (!file) return;
   const reader = new FileReader();
   reader.onload = function(e) {
@@ -790,23 +783,79 @@ function importExcel(input) {
 }
 
 /* ════════════════════════════════════════
-   KEYBOARD
+   EVENT LISTENERS (all delegated, no inline onclick)
 ════════════════════════════════════════ */
-document.addEventListener('keydown', e => {
-  if (e.key==='Escape') { closeModal(); closeConfig(); }
-  if ((e.ctrlKey||e.metaKey)&&e.key==='s') { e.preventDefault(); saveNow(); }
-  if (e.key==='Enter' && document.getElementById('modal-overlay').classList.contains('open')) {
-    if (document.activeElement.tagName!=='TEXTAREA'&&document.activeElement.tagName!=='BUTTON') { e.preventDefault(); saveItem(); }
-  }
-});
+document.addEventListener('DOMContentLoaded', function() {
 
-/* ════════════════════════════════════════
-   INIT
-════════════════════════════════════════ */
-loadTheme();
-if (localStorage.getItem(LS_BANNER)==='1') dismissBanner();
-initSupabase();
-connectAndLoad();
+  /* Topbar */
+  document.getElementById('btn-save').addEventListener('click', saveNow);
+  document.getElementById('btn-export').addEventListener('click', exportExcel);
+  document.getElementById('btn-db').addEventListener('click', openConfig);
+  document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+  document.getElementById('import-file').addEventListener('change', function() { importExcel(this); });
+
+  /* Search & filter */
+  document.getElementById('search-input').addEventListener('input', renderAll);
+  document.getElementById('filter-priority').addEventListener('change', renderAll);
+
+  /* Banner */
+  document.getElementById('banner-connect').addEventListener('click', openConfig);
+  document.getElementById('banner-later').addEventListener('click', dismissBanner);
+
+  /* Item modal */
+  document.getElementById('modal-cancel').addEventListener('click', closeModal);
+  document.getElementById('modal-save').addEventListener('click', saveItem);
+  document.getElementById('modal-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+  });
+
+  /* Config modal */
+  document.getElementById('cfg-cancel').addEventListener('click', closeConfig);
+  document.getElementById('cfg-clear').addEventListener('click', clearConfig);
+  document.getElementById('cfg-save').addEventListener('click', saveConfig);
+  document.getElementById('config-overlay').addEventListener('click', function(e) {
+    if (e.target === this) closeConfig();
+  });
+
+  /* Delegated clicks for dynamically rendered items */
+  document.getElementById('section-grid').addEventListener('click', function(e) {
+    const addBtn = e.target.closest('.add-item-btn');
+    if (addBtn) { openAdd(addBtn.dataset.section); return; }
+
+    const toggleBtn = e.target.closest('.toggle-done-btn');
+    if (toggleBtn) { toggleDone(toggleBtn.dataset.section); return; }
+
+    const editBtn = e.target.closest('.edit-item-btn');
+    if (editBtn) { openEdit(editBtn.dataset.section, editBtn.dataset.id); return; }
+
+    const delBtn = e.target.closest('.del-item-btn');
+    if (delBtn) { delItem(delBtn.dataset.section, delBtn.dataset.id); return; }
+  });
+
+  /* Delegated checkbox change for items */
+  document.getElementById('section-grid').addEventListener('change', function(e) {
+    if (e.target.classList.contains('toggle-item-cb')) {
+      toggleItem(e.target.dataset.section, e.target.dataset.id, e.target.checked);
+    }
+  });
+
+  /* Keyboard shortcuts */
+  document.addEventListener('keydown', function(e) {
+    if (e.key==='Escape') { closeModal(); closeConfig(); }
+    if ((e.ctrlKey||e.metaKey) && e.key==='s') { e.preventDefault(); saveNow(); }
+    if (e.key==='Enter' && document.getElementById('modal-overlay').classList.contains('open')) {
+      if (document.activeElement.tagName!=='TEXTAREA' && document.activeElement.tagName!=='BUTTON') {
+        e.preventDefault(); saveItem();
+      }
+    }
+  });
+
+  /* ── INIT ── */
+  loadTheme();
+  if (localStorage.getItem(LS_BANNER)==='1') dismissBanner();
+  initSupabase();
+  connectAndLoad();
+});
 </script>
 </body>
 </html>
