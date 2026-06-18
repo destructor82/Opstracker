@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>OpsTracker</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   :root {
     --glass-bg: rgba(255,255,255,0.18);
@@ -395,9 +394,17 @@ const SECTIONS = [
 ];
 const LS_DATA   = 'opstracker_v4';
 const LS_THEME  = 'opstracker_theme';
-const LS_BANNER = 'opstracker_banner';
-const LS_SBURL  = 'opstracker_sb_url';
-const LS_SBKEY  = 'opstracker_sb_key';
+
+/* ── Hardcoded Supabase credentials ── */
+const SB_URL = 'https://rdpksldlbtohwhkqipct.supabase.co';
+const SB_KEY = 'sb_publishable_j6BFuUZ0go87lRNi9NlNvw_EOx_Wi27';
+const REST    = SB_URL + '/rest/v1/opstracker_state';
+const HEADERS = {
+  'Content-Type': 'application/json',
+  'apikey': SB_KEY,
+  'Authorization': 'Bearer ' + SB_KEY,
+  'Prefer': 'resolution=merge-duplicates'
+};
 
 /* ════════════════════════════════════════
    STATE
@@ -408,90 +415,87 @@ let isDark = false;
 let saveTimer = null;
 let modalSection = null;
 let modalItemId = null;
-let sb = null;          // supabase client
-let realtimeSub = null;
 let isSyncing = false;
+let pollTimer = null;
 
 SECTIONS.forEach(s => { state[s.id] = []; expandedDone[s.id] = false; });
 
 /* ════════════════════════════════════════
-   SUPABASE
+   SUPABASE REST API
 ════════════════════════════════════════ */
-function initSupabase() {
-  const url = localStorage.getItem(LS_SBURL);
-  const key = localStorage.getItem(LS_SBKEY);
-  if (!url || !key) { setSyncBadge('offline','⬤ Local only'); return false; }
-  try {
-    if (typeof window.supabase === 'undefined' || !window.supabase.createClient) {
-      setSyncBadge('error','✕ Supabase lib failed'); return false;
-    }
-    sb = window.supabase.createClient(url, key);
-    setSyncBadge('syncing','↻ Connecting...');
-    return true;
-  } catch(e) {
-    console.error('Supabase init error:', e);
-    setSyncBadge('error','✕ DB error'); return false;
-  }
-}
-
-async function connectAndLoad() {
-  if (!sb) { loadLocal(); renderAll(); return; }
+async function dbLoad() {
   setSyncBadge('syncing','↻ Syncing...');
   try {
-    const { data, error } = await sb
-      .from('opstracker_state').select('*').eq('id',1).maybeSingle();
-    if (error) throw error;
-    if (data && data.payload) {
-      const remote = JSON.parse(data.payload);
+    const r = await fetch(REST + '?id=eq.1&select=payload', { headers: HEADERS });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const rows = await r.json();
+    if (rows && rows.length && rows[0].payload) {
+      const remote = JSON.parse(rows[0].payload);
       SECTIONS.forEach(s => { state[s.id] = remote[s.id] || []; });
       persistLocal();
+      setSyncBadge('synced','✓ Synced');
     } else {
+      /* No remote row yet — push local data up */
       loadLocal();
-      await pushToSupabase(true);
+      await dbSave(true);
     }
-    setSyncBadge('synced','✓ Synced');
-    subscribeRealtime();
   } catch(e) {
-    console.error('Supabase load error:', e);
-    setSyncBadge('error','✕ DB error — local');
+    console.error('DB load error:', e);
+    setSyncBadge('error','✕ DB error — using local');
     loadLocal();
   }
   renderAll();
+  startPolling();
 }
 
-async function pushToSupabase(silent) {
-  if (!sb || isSyncing) return;
+async function dbSave(silent) {
+  if (isSyncing) return;
   isSyncing = true;
   setSyncBadge('syncing','↻ Saving...');
   try {
     const payload = {};
     SECTIONS.forEach(s => { payload[s.id] = state[s.id]; });
-    const { error } = await sb.from('opstracker_state')
-      .upsert({ id:1, payload:JSON.stringify(payload), updated_at:new Date().toISOString() });
-    if (error) throw error;
-    setSyncBadge('synced','✓ Synced '+new Date().toLocaleTimeString());
-    setStatus('Saved to Supabase '+new Date().toLocaleTimeString());
+    const body = JSON.stringify({ id: 1, payload: JSON.stringify(payload), updated_at: new Date().toISOString() });
+    const r = await fetch(REST, {
+      method: 'POST',
+      headers: { ...HEADERS, 'Prefer': 'resolution=merge-duplicates,return=minimal' },
+      body
+    });
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    setSyncBadge('synced','✓ Synced ' + new Date().toLocaleTimeString());
+    setStatus('Saved ' + new Date().toLocaleTimeString());
     if (!silent) showToast('Saved ✓');
   } catch(e) {
+    console.error('DB save error:', e);
     setSyncBadge('error','✕ Save failed');
-    setStatus('Supabase save failed');
     if (!silent) showToast('Save failed ✗');
   }
   isSyncing = false;
 }
 
-function subscribeRealtime() {
-  if (!sb) return;
-  if (realtimeSub) { try { sb.removeChannel(realtimeSub); } catch(e){} realtimeSub = null; }
-  realtimeSub = sb.channel('opstracker-changes')
-    .on('postgres_changes',{ event:'UPDATE', schema:'public', table:'opstracker_state' }, payload => {
-      if (payload.new && payload.new.payload) {
-        const remote = JSON.parse(payload.new.payload);
-        SECTIONS.forEach(s => { state[s.id] = remote[s.id] || []; });
-        renderAll();
-        setSyncBadge('synced','✓ Live sync');
+/* Poll every 8 seconds for changes from other devices */
+let lastKnownUpdatedAt = null;
+function startPolling() {
+  clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(REST + '?id=eq.1&select=payload,updated_at', { headers: HEADERS });
+      if (!r.ok) return;
+      const rows = await r.json();
+      if (!rows || !rows.length) return;
+      const row = rows[0];
+      if (row.updated_at !== lastKnownUpdatedAt) {
+        lastKnownUpdatedAt = row.updated_at;
+        if (row.payload) {
+          const remote = JSON.parse(row.payload);
+          SECTIONS.forEach(s => { state[s.id] = remote[s.id] || []; });
+          persistLocal();
+          renderAll();
+          setSyncBadge('synced','✓ Live sync ' + new Date().toLocaleTimeString());
+        }
       }
-    }).subscribe();
+    } catch(e) { /* silent poll failure */ }
+  }, 8000);
 }
 
 /* ════════════════════════════════════════
@@ -500,10 +504,7 @@ function subscribeRealtime() {
 function loadLocal() {
   try {
     const raw = localStorage.getItem(LS_DATA);
-    if (raw) {
-      const d = JSON.parse(raw);
-      SECTIONS.forEach(s => { if (d[s.id]) state[s.id] = d[s.id]; });
-    }
+    if (raw) { const d = JSON.parse(raw); SECTIONS.forEach(s => { if (d[s.id]) state[s.id] = d[s.id]; }); }
     setStatus('Loaded from local storage');
   } catch(e) { setStatus('Could not load data'); }
 }
@@ -517,51 +518,27 @@ function persistLocal() {
 
 function saveNow() {
   persistLocal();
-  if (sb) pushToSupabase(false);
-  else { showToast('Saved locally ✓'); setStatus('Saved locally '+new Date().toLocaleTimeString()); }
+  dbSave(false);
 }
 
 function autoSave() {
   persistLocal();
   clearTimeout(saveTimer);
-  if (sb) saveTimer = setTimeout(() => pushToSupabase(true), 1400);
-  else setStatus('Saved locally '+new Date().toLocaleTimeString());
+  saveTimer = setTimeout(() => dbSave(true), 1400);
 }
 
 /* ════════════════════════════════════════
-   CONFIG MODAL
+   CONFIG (kept for reference but auto-connected)
 ════════════════════════════════════════ */
 function openConfig() {
-  document.getElementById('cfg-url').value = localStorage.getItem(LS_SBURL) || '';
-  document.getElementById('cfg-key').value = localStorage.getItem(LS_SBKEY) || '';
+  document.getElementById('cfg-url').value = SB_URL;
+  document.getElementById('cfg-key').value = SB_KEY;
   document.getElementById('config-overlay').classList.add('open');
 }
 function closeConfig() { document.getElementById('config-overlay').classList.remove('open'); }
-
-function clearConfig() {
-  if (!confirm('Remove Supabase credentials? App will use local storage only.')) return;
-  localStorage.removeItem(LS_SBURL); localStorage.removeItem(LS_SBKEY);
-  sb = null; realtimeSub = null;
-  setSyncBadge('offline','⬤ Local only');
-  closeConfig(); showToast('Credentials cleared');
-}
-
-async function saveConfig() {
-  const url = document.getElementById('cfg-url').value.trim();
-  const key = document.getElementById('cfg-key').value.trim();
-  if (!url || !key) { showToast('Both fields are required'); return; }
-  localStorage.setItem(LS_SBURL, url);
-  localStorage.setItem(LS_SBKEY, key);
-  closeConfig();
-  dismissBanner();
-  initSupabase();
-  await connectAndLoad();
-}
-
-function dismissBanner() {
-  localStorage.setItem(LS_BANNER,'1');
-  document.getElementById('setup-banner').classList.add('hidden');
-}
+function clearConfig() { closeConfig(); showToast('Credentials are hardcoded in the app'); }
+async function saveConfig() { closeConfig(); showToast('Credentials are hardcoded — already connected'); }
+function dismissBanner() { document.getElementById('setup-banner').classList.add('hidden'); }
 
 /* ════════════════════════════════════════
    UI HELPERS
@@ -852,9 +829,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
   /* ── INIT ── */
   loadTheme();
-  if (localStorage.getItem(LS_BANNER)==='1') dismissBanner();
-  initSupabase();
-  connectAndLoad();
+  dismissBanner(); /* auto-connected — no setup needed */
+  dbLoad();
 });
 </script>
 </body>
