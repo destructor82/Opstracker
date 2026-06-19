@@ -123,7 +123,21 @@
     box-shadow:var(--shadow);overflow:hidden;transition:border-color 0.2s,box-shadow 0.2s;
   }
   .section-card:hover{box-shadow:0 12px 40px rgba(108,99,255,0.14);}
+  .section-card.dragging-active{opacity:0.92;box-shadow:0 20px 50px rgba(0,0,0,0.35);transition:none;cursor:grabbing;}
+  .section-card.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent),0 12px 40px rgba(108,99,255,0.2);}
+  .drag-placeholder{
+    border:2px dashed var(--accent);border-radius:22px;
+    background:rgba(108,99,255,0.06);
+    box-sizing:border-box;
+  }
   .section-header{padding:13px 15px 10px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--glass-border);}
+  .drag-handle{
+    color:var(--text-muted);font-size:16px;flex-shrink:0;line-height:1;letter-spacing:-1px;
+    opacity:0.55;cursor:grab;touch-action:none;padding:4px 6px;margin:-4px -6px -4px -2px;
+    border-radius:8px;transition:opacity 0.15s,background 0.15s;
+  }
+  .drag-handle:hover{opacity:1;background:var(--pill-bg);}
+  .drag-handle:active{cursor:grabbing;}
   .section-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0;}
   .section-title{font-size:14px;font-weight:700;flex:1;}
   .section-count{font-size:11px;color:var(--text-muted);background:var(--pill-bg);padding:2px 8px;border-radius:10px;}
@@ -154,6 +168,14 @@
   .icon-btn:hover{color:var(--text-primary);background:var(--pill-bg);}
 
   .item-notes{font-size:12px;color:var(--text-muted);margin-top:5px;padding-left:26px;line-height:1.4;}
+  .item-progress{
+    font-size:12px;color:var(--text-secondary);margin-top:6px;padding:7px 10px 7px 26px;
+    line-height:1.4;background:var(--pill-bg);border-radius:10px;position:relative;
+  }
+  .item-progress::before{
+    content:'📝';position:absolute;left:7px;top:7px;font-size:11px;
+  }
+  .item-progress-label{font-weight:700;color:var(--accent);text-transform:uppercase;font-size:10px;letter-spacing:0.4px;display:block;margin-bottom:2px;}
   .item-meta{display:flex;align-items:center;gap:5px;margin-top:6px;padding-left:26px;flex-wrap:wrap;}
   .badge{font-size:11px;padding:2px 7px;border-radius:8px;font-weight:600;}
   .badge-high{background:var(--badge-high-bg);color:var(--badge-high-text);}
@@ -275,6 +297,7 @@
   <button class="btn" id="btn-export">📤 Export</button>
   <label class="btn file-input-label">📥 Import<input type="file" id="import-file" accept=".xlsx,.xls"></label>
   <button class="btn" id="theme-btn">🌙 Dark</button>
+  <button class="btn" id="btn-reset-layout" title="Reset section order">↺ Layout</button>
   <button class="btn" id="btn-db" title="Database info">⚙️ DB</button>
 </div>
 
@@ -323,6 +346,10 @@
     <div class="form-group">
       <label class="form-label">Section</label>
       <select class="form-select" id="f-section"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Progress / Completion Notes</label>
+      <textarea class="form-textarea" id="f-progress" placeholder="e.g. Waiting on vendor reply, escalated to manager, resolved by replacing unit..."></textarea>
     </div>
     <!-- Completed toggle row -->
     <div class="form-group" style="display:flex;align-items:center;gap:10px;">
@@ -388,11 +415,13 @@ const SECTIONS = [
   { id:'fleet',         label:'Fleet Related',   color:'#f97316' },
   { id:'general',       label:'General',         color:'#64748b' },
   { id:'hr',            label:'HR Related',      color:'#ec4899' },
+  { id:'investigations',label:'Investigations',  color:'#0ea5e9' },
   { id:'other',         label:'Other',           color:'#84cc16' },
 ];
 
 const LS_DATA  = 'opstracker_v5';
 const LS_THEME = 'opstracker_theme';
+const LS_ORDER = 'opstracker_order';
 
 /* Hardcoded Supabase credentials */
 const SB_URL  = 'https://rdpksldlbtohwhkqipct.supabase.co';
@@ -419,6 +448,7 @@ let moveFromSection = null;
 let isSyncing = false;
 let pollTimer = null;
 let lastUpdatedAt = null;
+let sectionOrder = SECTIONS.map(s => s.id);
 
 SECTIONS.forEach(s => { state[s.id] = []; expandedDone[s.id] = false; });
 
@@ -534,6 +564,29 @@ function loadTheme() {
 }
 
 /* ══════════════════════════════════════
+   SECTION ORDER (drag & drop layout)
+══════════════════════════════════════ */
+function loadOrder() {
+  try {
+    const raw = localStorage.getItem(LS_ORDER);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr) && arr.length) sectionOrder = arr;
+    }
+  } catch(e) {}
+}
+function persistOrder() {
+  try { localStorage.setItem(LS_ORDER, JSON.stringify(sectionOrder)); } catch(e) {}
+}
+function resetOrder() {
+  if (!confirm('Reset section layout to default order?')) return;
+  sectionOrder = SECTIONS.map(s => s.id);
+  persistOrder();
+  renderAll();
+  showToast('Layout reset ✓');
+}
+
+/* ══════════════════════════════════════
    UI HELPERS
 ══════════════════════════════════════ */
 function setSyncBadge(cls, text) {
@@ -557,12 +610,22 @@ function renderAll() {
   const fp = document.getElementById('filter-priority').value;
   const grid = document.getElementById('section-grid');
   grid.innerHTML = '';
-  SECTIONS.forEach(s => grid.appendChild(buildSectionCard(s, q, fp)));
+  const orderedSections = getOrderedSections();
+  orderedSections.forEach(s => grid.appendChild(buildSectionCard(s, q, fp)));
+}
+
+function getOrderedSections() {
+  /* sectionOrder is an array of ids; include any new sections not yet in the saved order */
+  const known = sectionOrder.filter(id => SECTIONS.some(s => s.id===id));
+  const missing = SECTIONS.filter(s => !known.includes(s.id)).map(s => s.id);
+  const fullOrder = [...known, ...missing];
+  if (fullOrder.length !== sectionOrder.length || missing.length) sectionOrder = fullOrder;
+  return fullOrder.map(id => SECTIONS.find(s => s.id===id)).filter(Boolean);
 }
 
 function matchesFilter(item, q, fp) {
   if (fp && item.priority !== fp) return false;
-  if (q) { const hay=((item.title||'')+' '+(item.notes||'')).toLowerCase(); if(!hay.includes(q)) return false; }
+  if (q) { const hay=((item.title||'')+' '+(item.notes||'')+' '+(item.progressNote||'')).toLowerCase(); if(!hay.includes(q)) return false; }
   return true;
 }
 
@@ -575,8 +638,10 @@ function buildSectionCard(s, q, fp) {
 
   const wrap = document.createElement('div');
   wrap.className = 'section-card';
+  wrap.dataset.sectionId = s.id;
   let h = `
     <div class="section-header">
+      <span class="drag-handle">⠿⠿</span>
       <div class="section-dot" style="background:${s.color}"></div>
       <div class="section-title">${s.label}</div>
       <div class="section-count">${active.length} active${done.length?' · '+done.length+' done':''}</div>
@@ -620,6 +685,7 @@ function itemHTML(item, sid) {
         </div>
       </div>
       ${item.notes?`<div class="item-notes">${esc(item.notes)}</div>`:''}
+      ${item.progressNote?`<div class="item-progress"><span class="item-progress-label">Progress</span>${esc(item.progressNote)}</div>`:''}
       <div class="item-meta">
         <span class="badge badge-${p}">${labels[p]}</span>
         ${item.date?`<span class="badge badge-date">📅 ${item.date}</span>`:''}
@@ -704,6 +770,7 @@ function openAdd(sid) {
   document.getElementById('modal-title').textContent = 'Add to ' + SECTIONS.find(x=>x.id===sid).label;
   document.getElementById('f-title').value = '';
   document.getElementById('f-notes').value = '';
+  document.getElementById('f-progress').value = '';
   document.getElementById('f-date').value = todayStr();
   document.getElementById('f-priority').value = 'medium';
   document.getElementById('f-completed').checked = false;
@@ -722,6 +789,7 @@ function openEdit(sid, id, justCompleted) {
   document.getElementById('modal-title').textContent = justCompleted ? '✓ Set completed date' : 'Edit — ' + SECTIONS.find(x=>x.id===sid).label;
   document.getElementById('f-title').value = item.title||'';
   document.getElementById('f-notes').value = item.notes||'';
+  document.getElementById('f-progress').value = item.progressNote||'';
   document.getElementById('f-date').value = item.date||'';
   document.getElementById('f-priority').value = item.priority||'medium';
   const isCompleted = !!item.completed;
@@ -747,6 +815,7 @@ function saveItem() {
   const date      = document.getElementById('f-date').value;
   const priority  = document.getElementById('f-priority').value;
   const notes     = document.getElementById('f-notes').value.trim();
+  const progressNote = document.getElementById('f-progress').value.trim();
   const completed = document.getElementById('f-completed').checked;
   const newSection= document.getElementById('f-section').value;
   let completedAt = null;
@@ -760,7 +829,7 @@ function saveItem() {
     const oldSection = modalSection;
     const item = (state[oldSection]||[]).find(i=>i.id===modalItemId);
     if (item) {
-      item.title=title; item.notes=notes; item.date=date; item.priority=priority;
+      item.title=title; item.notes=notes; item.progressNote=progressNote; item.date=date; item.priority=priority;
       item.completed=completed; item.completedAt=completedAt;
       if (newSection !== oldSection) {
         state[oldSection] = state[oldSection].filter(i=>i.id!==modalItemId);
@@ -770,7 +839,7 @@ function saveItem() {
     }
   } else {
     if (!state[newSection]) state[newSection]=[];
-    state[newSection].push({ id:uid(), title, notes, date, priority, completed, completedAt, createdAt:new Date().toISOString() });
+    state[newSection].push({ id:uid(), title, notes, progressNote, date, priority, completed, completedAt, createdAt:new Date().toISOString() });
   }
   closeModal(); autoSave(); renderAll();
 }
@@ -793,13 +862,13 @@ function exportExcel() {
   const wb = XLSX.utils.book_new();
   SECTIONS.forEach(s => {
     const rows = (state[s.id]||[]).map(i => ({
-      Title:i.title||'', Notes:i.notes||'', Date:i.date||'', Priority:i.priority||'medium',
+      Title:i.title||'', Notes:i.notes||'', 'Progress Notes':i.progressNote||'', Date:i.date||'', Priority:i.priority||'medium',
       Completed:i.completed?'Yes':'No',
       'Completed Date':i.completedAt||'',
       'Created At':i.createdAt?new Date(i.createdAt).toLocaleString():''
     }));
-    const ws = XLSX.utils.json_to_sheet(rows.length?rows:[{Title:'',Notes:'',Date:'',Priority:'',Completed:'','Completed Date':'','Created At':''}]);
-    ws['!cols']=[{wch:35},{wch:45},{wch:12},{wch:10},{wch:10},{wch:14},{wch:20}];
+    const ws = XLSX.utils.json_to_sheet(rows.length?rows:[{Title:'',Notes:'','Progress Notes':'',Date:'',Priority:'',Completed:'','Completed Date':'','Created At':''}]);
+    ws['!cols']=[{wch:35},{wch:40},{wch:40},{wch:12},{wch:10},{wch:10},{wch:14},{wch:20}];
     XLSX.utils.book_append_sheet(wb, ws, s.label.slice(0,31));
   });
   XLSX.writeFile(wb, 'OpsTracker_'+todayStr()+'.xlsx');
@@ -824,6 +893,7 @@ function importExcel(input) {
           const completed = String(row.Completed||'').toLowerCase()==='yes';
           state[s.id].push({
             id:uid(), title:String(row.Title||''), notes:String(row.Notes||''),
+            progressNote:String(row['Progress Notes']||''),
             date:String(row.Date||''), priority:String(row.Priority||'medium').toLowerCase(),
             completed, completedAt: completed ? (row['Completed Date']||todayStr()) : null,
             createdAt:new Date().toISOString()
@@ -848,6 +918,7 @@ document.addEventListener('DOMContentLoaded', function() {
   document.getElementById('btn-export').addEventListener('click', exportExcel);
   document.getElementById('btn-db').addEventListener('click', openConfig);
   document.getElementById('theme-btn').addEventListener('click', toggleTheme);
+  document.getElementById('btn-reset-layout').addEventListener('click', resetOrder);
   document.getElementById('import-file').addEventListener('change', function(){ importExcel(this); });
 
   /* Search & filter */
@@ -907,6 +978,127 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
 
+  /* ════════════════════════════════════════
+     DRAG & DROP REORDERING (Pointer Events)
+     Works uniformly for mouse, touch, and pen.
+  ════════════════════════════════════════ */
+  const grid = document.getElementById('section-grid');
+  let dragState = null; // { card, sectionId, startX, startY, offsetX, offsetY, placeholder }
+
+  grid.addEventListener('pointerdown', function(e) {
+    const handle = e.target.closest('.drag-handle');
+    if (!handle) return;
+    const card = handle.closest('.section-card');
+    if (!card) return;
+    if (e.button !== undefined && e.button !== 0) return; // left-click / primary touch only
+
+    e.preventDefault();
+
+    /* Capture FIRST, before any DOM/style mutation, so the browser locks pointer routing to this element */
+    try { handle.setPointerCapture(e.pointerId); } catch(err) {}
+
+    const rect = card.getBoundingClientRect();
+
+    dragState = {
+      card,
+      handle,
+      sectionId: card.dataset.sectionId,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      width: rect.width,
+      height: rect.height,
+      pointerId: e.pointerId
+    };
+
+    /* placeholder keeps the grid slot occupied */
+    const placeholder = document.createElement('div');
+    placeholder.className = 'drag-placeholder';
+    placeholder.style.width = rect.width + 'px';
+    placeholder.style.height = rect.height + 'px';
+    card.parentNode.insertBefore(placeholder, card);
+    dragState.placeholder = placeholder;
+
+    card.classList.add('dragging-active');
+    card.style.position = 'fixed';
+    card.style.zIndex = '500';
+    card.style.width = rect.width + 'px';
+    card.style.left = (e.clientX - dragState.offsetX) + 'px';
+    card.style.top = (e.clientY - dragState.offsetY) + 'px';
+    /* NOTE: do NOT set pointer-events:none on the card — that can break
+       the active pointer capture on its own descendant (the handle) in
+       some browsers, silently killing the drag. */
+  });
+
+  document.addEventListener('pointermove', function(e) {
+    if (!dragState) return;
+    e.preventDefault();
+    const { card, offsetX, offsetY } = dragState;
+    card.style.left = (e.clientX - offsetX) + 'px';
+    card.style.top = (e.clientY - offsetY) + 'px';
+
+    /* Find which card we're hovering over. We temporarily hide the dragged
+       card with visibility (not pointer-events / display) so elementFromPoint
+       sees through it — visibility does not affect an active pointer capture. */
+    const prevVisibility = card.style.visibility;
+    card.style.visibility = 'hidden';
+    const elBelow = document.elementFromPoint(e.clientX, e.clientY);
+    card.style.visibility = prevVisibility || 'visible';
+    const cardBelow = elBelow ? elBelow.closest('.section-card') : null;
+
+    grid.querySelectorAll('.section-card.drag-over').forEach(c => { if (c !== cardBelow) c.classList.remove('drag-over'); });
+
+    if (cardBelow && cardBelow !== card) {
+      cardBelow.classList.add('drag-over');
+      /* move placeholder to where the card would land */
+      const rect = cardBelow.getBoundingClientRect();
+      if (e.clientY - rect.top < rect.height / 2) {
+        cardBelow.parentNode.insertBefore(dragState.placeholder, cardBelow);
+      } else {
+        cardBelow.parentNode.insertBefore(dragState.placeholder, cardBelow.nextSibling);
+      }
+    }
+  }, { passive: false });
+
+  document.addEventListener('pointerup', function(e) {
+    if (!dragState) return;
+    const { card, placeholder, sectionId, handle, pointerId } = dragState;
+    try { handle.releasePointerCapture(pointerId); } catch(err) {}
+
+    /* compute new order based on placeholder position in the grid */
+    card.style.position = '';
+    card.style.zIndex = '';
+    card.style.left = '';
+    card.style.top = '';
+    card.style.width = '';
+    card.style.pointerEvents = '';
+    card.classList.remove('dragging-active');
+    grid.querySelectorAll('.section-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+
+    placeholder.parentNode.insertBefore(card, placeholder);
+    placeholder.remove();
+
+    /* read the new DOM order to rebuild sectionOrder */
+    const newOrder = Array.from(grid.querySelectorAll('.section-card')).map(c => c.dataset.sectionId);
+    const changed = JSON.stringify(newOrder) !== JSON.stringify(sectionOrder);
+    sectionOrder = newOrder;
+    if (changed) {
+      persistOrder();
+      showToast('Layout updated ✓');
+    }
+    dragState = null;
+  });
+
+  document.addEventListener('pointercancel', function() {
+    if (!dragState) return;
+    const { card, placeholder } = dragState;
+    card.style.position = ''; card.style.zIndex = ''; card.style.left = ''; card.style.top = '';
+    card.style.width = ''; card.style.pointerEvents = '';
+    card.classList.remove('dragging-active');
+    if (placeholder && placeholder.parentNode) { placeholder.parentNode.insertBefore(card, placeholder); placeholder.remove(); }
+    grid.querySelectorAll('.section-card.drag-over').forEach(c => c.classList.remove('drag-over'));
+    dragState = null;
+  });
+
   /* Keyboard */
   document.addEventListener('keydown', function(e) {
     if (e.key==='Escape') { closeModal(); closeMove(); closeConfig(); }
@@ -920,6 +1112,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
   /* INIT */
   loadTheme();
+  loadOrder();
   dbLoad();
 });
 </script>
