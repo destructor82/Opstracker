@@ -36,65 +36,66 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <style>
   :root {
-    /* ── Liquid Black Glass + Blood Red Accents ── */
-    --glass-bg: rgba(10,0,0,0.55);
-    --glass-border: rgba(200,20,20,0.28);
-    --glass-blur: blur(28px) saturate(1.5);
-    --bg-grad: linear-gradient(160deg, #000000 0%, #0d0000 45%, #1c0000 75%, #000000 100%);
-    --card-bg: rgba(8,0,0,0.6);
-    --card-border: rgba(180,20,20,0.22);
-    --text-primary: #f5e8e8;
-    --text-secondary: #c8a0a0;
-    --text-muted: #6a4040;
+    /* ── Premium White Liquid Glass Theme ── */
+    --glass-bg: rgba(255,255,255,0.52);
+    --glass-border: rgba(255,255,255,0.75);
+    --glass-blur: blur(32px) saturate(2.2) brightness(1.08);
+    --bg-grad: linear-gradient(145deg, #e8eef8 0%, #dde6f5 30%, #eaf0fb 60%, #f0f4fd 100%);
+    --card-bg: rgba(255,255,255,0.62);
+    --card-border: rgba(255,255,255,0.82);
+    --text-primary: #1a1f2e;
+    --text-secondary: #4a5472;
+    --text-muted: #8a94b0;
     --accent: #cc1111;
-    --success: #22c55e;
-    --warning: #f59e0b;
-    --danger: #ff2020;
-    --completed-bg: rgba(34,197,94,0.07);
-    --completed-border: rgba(34,197,94,0.2);
-    --pill-bg: rgba(160,10,10,0.18);
-    --input-bg: rgba(12,0,0,0.55);
-    --input-border: rgba(160,20,20,0.35);
-    --toolbar-bg: rgba(5,0,0,0.7);
-    --modal-overlay: rgba(0,0,0,0.75);
-    --shadow: 0 8px 40px rgba(0,0,0,0.7), inset 0 1px 0 rgba(200,20,20,0.15);
-    --badge-high-bg: rgba(200,20,20,0.2); --badge-high-text: #ff6060;
-    --badge-medium-bg: rgba(251,191,36,0.14); --badge-medium-text: #fcd34d;
-    --badge-low-bg: rgba(34,197,94,0.12); --badge-low-text: #86efac;
-    --priority-high-border: #cc1111;
+    --success: #16a34a;
+    --warning: #d97706;
+    --danger: #dc2626;
+    --completed-bg: rgba(22,163,74,0.08);
+    --completed-border: rgba(22,163,74,0.25);
+    --pill-bg: rgba(200,210,240,0.45);
+    --input-bg: rgba(255,255,255,0.72);
+    --input-border: rgba(180,195,230,0.7);
+    --toolbar-bg: rgba(255,255,255,0.68);
+    --modal-overlay: rgba(100,120,180,0.22);
+    --shadow: 0 8px 32px rgba(100,120,200,0.13), 0 1.5px 0 rgba(255,255,255,0.9) inset, 0 -1px 0 rgba(180,195,230,0.18) inset;
+    --badge-high-bg: rgba(220,38,38,0.1); --badge-high-text: #b91c1c;
+    --badge-medium-bg: rgba(217,119,6,0.12); --badge-medium-text: #b45309;
+    --badge-low-bg: rgba(22,163,74,0.1); --badge-low-text: #15803d;
+    --priority-high-border: #ef4444;
     --priority-medium-border: #f59e0b;
     --priority-low-border: #22c55e;
-    --glass-shine: linear-gradient(135deg, rgba(255,255,255,0.07) 0%, rgba(200,20,20,0.04) 50%, rgba(0,0,0,0.0) 100%);
+    --glass-shine: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,255,255,0.4) 40%, rgba(200,215,245,0.15) 100%);
   }
   body.dark {
-    --glass-bg: rgba(6,0,0,0.68);
-    --glass-border: rgba(180,15,15,0.3);
-    --glass-blur: blur(32px) saturate(1.6);
-    --bg-grad: linear-gradient(160deg, #000000 0%, #080000 50%, #150000 80%, #000000 100%);
-    --card-bg: rgba(5,0,0,0.72);
-    --card-border: rgba(160,15,15,0.24);
-    --text-primary: #f0e0e0;
-    --text-secondary: #b08080;
-    --text-muted: #583838;
-    --accent: #dd1515;
+    /* ── Premium Dark Liquid Glass + Vibrant Blood Red Background ── */
+    --glass-bg: rgba(0,0,0,0.52);
+    --glass-border: rgba(255,255,255,0.09);
+    --glass-blur: blur(36px) saturate(1.8) brightness(1.1);
+    --bg-grad: linear-gradient(160deg, #0a0000 0%, #1a0000 25%, #2d0000 50%, #1a0000 75%, #0a0000 100%);
+    --card-bg: rgba(0,0,0,0.58);
+    --card-border: rgba(255,255,255,0.08);
+    --text-primary: #f8f0f0;
+    --text-secondary: #c8a8a8;
+    --text-muted: #785858;
+    --accent: #ff2a2a;
     --success: #34d399;
     --warning: #fbbf24;
-    --danger: #ff3030;
-    --completed-bg: rgba(52,211,153,0.06);
-    --completed-border: rgba(52,211,153,0.16);
-    --pill-bg: rgba(140,8,8,0.2);
-    --input-bg: rgba(8,0,0,0.65);
-    --input-border: rgba(140,15,15,0.35);
-    --toolbar-bg: rgba(3,0,0,0.82);
-    --modal-overlay: rgba(0,0,0,0.85);
-    --shadow: 0 8px 48px rgba(0,0,0,0.9), inset 0 1px 0 rgba(180,15,15,0.12);
-    --badge-high-bg: rgba(180,15,15,0.22); --badge-high-text: #ff5050;
-    --badge-medium-bg: rgba(251,191,36,0.14); --badge-medium-text: #fcd34d;
-    --badge-low-bg: rgba(52,211,153,0.12); --badge-low-text: #6ee7b7;
-    --priority-high-border: #dd1515;
+    --danger: #ff4444;
+    --completed-bg: rgba(52,211,153,0.07);
+    --completed-border: rgba(52,211,153,0.2);
+    --pill-bg: rgba(255,255,255,0.07);
+    --input-bg: rgba(0,0,0,0.55);
+    --input-border: rgba(255,255,255,0.12);
+    --toolbar-bg: rgba(0,0,0,0.65);
+    --modal-overlay: rgba(0,0,0,0.8);
+    --shadow: 0 8px 40px rgba(0,0,0,0.8), 0 1px 0 rgba(255,255,255,0.07) inset, 0 0 0 1px rgba(255,255,255,0.04) inset;
+    --badge-high-bg: rgba(255,42,42,0.18); --badge-high-text: #ff7070;
+    --badge-medium-bg: rgba(251,191,36,0.15); --badge-medium-text: #fcd34d;
+    --badge-low-bg: rgba(52,211,153,0.13); --badge-low-text: #6ee7b7;
+    --priority-high-border: #ff2a2a;
     --priority-medium-border: #fbbf24;
     --priority-low-border: #34d399;
-    --glass-shine: linear-gradient(135deg, rgba(255,255,255,0.05) 0%, rgba(180,10,10,0.03) 50%, rgba(0,0,0,0.0) 100%);
+    --glass-shine: linear-gradient(135deg, rgba(255,255,255,0.11) 0%, rgba(255,255,255,0.04) 45%, rgba(0,0,0,0.0) 100%);
   }
   *{box-sizing:border-box;margin:0;padding:0;}
   html,body{min-height:100%;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;}
@@ -105,21 +106,32 @@
     transition:background 0.4s,color 0.3s;
     min-height:100vh;
   }
-  /* 4K ambient: near-black with one deep blood-red bloom */
+  /* Light ambient: soft blue-white bloom */
   body::before{
     content:'';
     position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:
-      radial-gradient(ellipse 65% 50% at 20% 80%, rgba(140,0,0,0.32) 0%, transparent 65%),
-      radial-gradient(ellipse 45% 40% at 80% 15%, rgba(100,0,0,0.2) 0%, transparent 60%);
+      radial-gradient(ellipse 70% 55% at 15% 85%, rgba(180,200,255,0.38) 0%, transparent 65%),
+      radial-gradient(ellipse 50% 40% at 85% 10%, rgba(210,225,255,0.32) 0%, transparent 60%);
     animation: breathe 18s ease-in-out infinite alternate;
   }
   body::after{
     content:'';
     position:fixed;inset:0;z-index:-1;pointer-events:none;
     background:
-      radial-gradient(ellipse 30% 25% at 55% 50%, rgba(80,0,0,0.12) 0%, transparent 70%);
+      radial-gradient(ellipse 40% 30% at 50% 55%, rgba(200,215,255,0.22) 0%, transparent 70%);
     animation: breathe 28s ease-in-out infinite alternate-reverse;
+  }
+  /* Dark theme ambient: vivid red blooms */
+  body.dark::before{
+    background:
+      radial-gradient(ellipse 65% 52% at 18% 82%, rgba(200,0,0,0.55) 0%, transparent 60%),
+      radial-gradient(ellipse 50% 42% at 82% 12%, rgba(160,0,0,0.38) 0%, transparent 58%);
+  }
+  body.dark::after{
+    background:
+      radial-gradient(ellipse 38% 30% at 50% 50%, rgba(255,20,20,0.18) 0%, transparent 65%),
+      radial-gradient(ellipse 25% 20% at 70% 75%, rgba(180,0,0,0.22) 0%, transparent 55%);
   }
   @keyframes breathe{
     0%{opacity:0.7;transform:scale(1);}
@@ -132,7 +144,7 @@
     border-bottom:1px solid var(--glass-border);
     padding:10px 20px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;
   }
-  .topbar-brand{font-size:19px;font-weight:800;background:linear-gradient(90deg,#880000,#dd2020,#ff5050,#dd2020,#880000);background-size:300% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;flex:1;min-width:120px;animation:shimmerBrand 6s linear infinite;}
+  .topbar-brand{font-size:19px;font-weight:800;background:linear-gradient(90deg,#990000,#ee1111,#ff5a5a,#ee1111,#990000);background-size:300% auto;-webkit-background-clip:text;-webkit-text-fill-color:transparent;flex:1;min-width:120px;animation:shimmerBrand 6s linear infinite;}
   @keyframes shimmerBrand{0%{background-position:0% center;}100%{background-position:300% center;}}
   .sync-badge{font-size:11px;padding:3px 10px;border-radius:10px;font-weight:600;background:var(--pill-bg);color:var(--text-muted);transition:background 0.3s,color 0.3s;}
   .sync-badge.syncing{background:rgba(245,158,11,0.18);color:var(--warning);}
@@ -171,7 +183,7 @@
     border:1px solid var(--input-border);background:var(--input-bg);
     backdrop-filter:blur(8px);color:var(--text-primary);outline:none;cursor:pointer;
   }
-  .filter-sel option{background:#2a0000;color:#ffe0e0;}
+  .filter-sel option{background:#eef1fa;color:#1a1f2e;}
   body.dark .filter-sel option{background:#1a0000;color:#ffd0d0;}
 
   .main{max-width:1400px;margin:0 auto;padding:22px 16px 80px;}
@@ -190,7 +202,8 @@
   }
   .section-card:hover::before{opacity:1;}
   .section-card > *{position:relative;z-index:1;}
-  .section-card:hover{box-shadow:0 12px 40px rgba(0,0,0,0.7),0 0 0 1px rgba(160,15,15,0.35);}
+  .section-card:hover{box-shadow:0 12px 40px rgba(100,120,200,0.18),0 0 0 1px rgba(255,255,255,0.85);}
+  body.dark .section-card:hover{box-shadow:0 12px 40px rgba(0,0,0,0.75),0 0 0 1px rgba(255,80,80,0.25);}
   .section-card.dragging-active{opacity:0.92;box-shadow:0 20px 50px rgba(0,0,0,0.55);transition:none;cursor:grabbing;}
   .section-card.drag-over{border-color:var(--accent);box-shadow:0 0 0 2px var(--accent),0 12px 40px rgba(0,0,0,0.6);}
   .drag-placeholder{
@@ -284,7 +297,7 @@
     font-size:14px;font-family:inherit;outline:none;transition:border-color 0.2s;
   }
   .form-input:focus,.form-select:focus,.form-textarea:focus{border-color:var(--accent);}
-  .form-select option{background:#2a0000;color:#ffe0e0;}
+  .form-select option{background:#eef1fa;color:#1a1f2e;}
   body.dark .form-select option{background:#1a0000;color:#ffd0d0;}
   .form-textarea{resize:vertical;min-height:72px;}
   .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;}
@@ -443,7 +456,7 @@
   <button class="btn btn-save" id="btn-save">💾 Save Now</button>
   <button class="btn" id="btn-export">📤 Export</button>
   <label class="btn file-input-label">📥 Import<input type="file" id="import-file" accept=".xlsx,.xls"></label>
-  <button class="btn" id="theme-btn">🩸 Dark</button>
+  <button class="btn" id="theme-btn">🌑 Dark</button>
   <button class="btn" id="btn-reset-layout" title="Reset section order">↺ Layout</button>
   <button class="btn" id="btn-db" title="Database info">⚙️ DB</button>
 </div>
@@ -770,12 +783,12 @@ function autoSave() {
 function toggleTheme() {
   isDark = !isDark;
   isDark ? document.body.classList.add('dark') : document.body.classList.remove('dark');
-  document.getElementById('theme-btn').textContent = isDark ? '🩸 Deep Red' : '🩸 Dark';
+  document.getElementById('theme-btn').textContent = isDark ? '☀️ Light' : '🌑 Dark';
   localStorage.setItem(LS_THEME, isDark ? '1' : '0');
 }
 function loadTheme() {
   isDark = localStorage.getItem(LS_THEME) === '1';
-  if (isDark) { document.body.classList.add('dark'); document.getElementById('theme-btn').textContent = '🩸 Deep Red'; }
+  if (isDark) { document.body.classList.add('dark'); document.getElementById('theme-btn').textContent = '☀️ Light'; }
 }
 
 /* ══════════════════════════════════════
